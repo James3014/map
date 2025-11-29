@@ -37,11 +37,39 @@ export function useGesture(
   const initialPinchDistanceRef = useRef<number | null>(null);
   const isDraggingRef = useRef(false);
 
+  // P3-9: 性能優化 - RAF 節流
+  const rafIdRef = useRef<number | null>(null);
+  const pendingPanRef = useRef<Point | null>(null);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || disabled) return;
 
     // ========== 工具函數 ==========
+
+    /**
+     * P3-9: RAF 節流的 pan 調用（優化性能）
+     * 將多次 pan 合併為單次 RAF 回調
+     */
+    const throttledPan = (delta: Point) => {
+      if (!pendingPanRef.current) {
+        pendingPanRef.current = delta;
+      } else {
+        // 累積 delta
+        pendingPanRef.current.x += delta.x;
+        pendingPanRef.current.y += delta.y;
+      }
+
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          if (pendingPanRef.current) {
+            onPan?.(pendingPanRef.current);
+            pendingPanRef.current = null;
+          }
+          rafIdRef.current = null;
+        });
+      }
+    };
 
     /**
      * 計算兩個觸摸點之間的距離
@@ -88,12 +116,12 @@ export function useGesture(
           // 刮除模式
           onScratch?.(currentPoint);
         } else if (mode === GestureMode.PAN) {
-          // 平移模式
+          // 平移模式 - P3-9: 使用 RAF 節流
           const delta: Point = {
             x: currentPoint.x - lastPointRef.current.x,
             y: currentPoint.y - lastPointRef.current.y,
           };
-          onPan?.(delta);
+          throttledPan(delta);
         }
 
         lastPointRef.current = currentPoint;
@@ -144,11 +172,12 @@ export function useGesture(
       if (mode === GestureMode.SCRATCH) {
         onScratch?.(currentPoint);
       } else if (mode === GestureMode.PAN) {
+        // P3-9: 使用 RAF 節流
         const delta: Point = {
           x: currentPoint.x - lastPointRef.current.x,
           y: currentPoint.y - lastPointRef.current.y,
         };
-        onPan?.(delta);
+        throttledPan(delta);
       }
 
       lastPointRef.current = currentPoint;
@@ -175,6 +204,12 @@ export function useGesture(
     // ========== 清理 ==========
 
     return () => {
+      // P3-9: 取消待處理的 RAF
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);

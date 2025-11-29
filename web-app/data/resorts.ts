@@ -77,9 +77,9 @@ export const REGIONS: Record<RegionId, Region> = {
 };
 
 // 日本雪場數據（座標基於 geolonia SVG 的 viewBox="0 0 1000 1000"）
-export const RESORTS: Record<string, Resort> = {
+export const RESORTS: readonly Resort[] = [
     // 北海道（地圖最上方，大約 x: 700-900, y: 50-250）
-    niseko_grand_hirafu: {
+    {
         id: 'niseko_grand_hirafu',
         name: '二世谷比羅夫',
         nameEn: 'Niseko Grand Hirafu',
@@ -89,7 +89,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'intermediate',
         tags: ['粉雪', '國際化', '夜滑'],
     },
-    rusutsu: {
+    {
         id: 'rusutsu',
         name: '留壽都',
         nameEn: 'Rusutsu',
@@ -99,7 +99,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'advanced',
         tags: ['粉雪', '大型度假村'],
     },
-    furano: {
+    {
         id: 'furano',
         name: '富良野',
         nameEn: 'Furano',
@@ -111,7 +111,7 @@ export const RESORTS: Record<string, Resort> = {
     },
 
     // 東北（x: 650-750, y: 400-500）
-    appi_kogen: {
+    {
         id: 'appi_kogen',
         name: '安比高原',
         nameEn: 'Appi Kogen',
@@ -121,7 +121,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'intermediate',
         tags: ['粉雪', '長雪季'],
     },
-    zao_onsen: {
+    {
         id: 'zao_onsen',
         name: '藏王溫泉',
         nameEn: 'Zao Onsen',
@@ -131,7 +131,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'intermediate',
         tags: ['樹冰', '溫泉'],
     },
-    alts_bandai: {
+    {
         id: 'alts_bandai',
         name: '磐梯山',
         nameEn: 'Alts Bandai',
@@ -143,7 +143,7 @@ export const RESORTS: Record<string, Resort> = {
     },
 
     // 中部（長野、新潟 x: 520-580, y: 580-650）
-    hakuba_happo_one: {
+    {
         id: 'hakuba_happo_one',
         name: '白馬八方尾根',
         nameEn: 'Hakuba Happo-One',
@@ -153,7 +153,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'advanced',
         tags: ['奧運場地', '長距離滑道'],
     },
-    hakuba_goryu: {
+    {
         id: 'hakuba_goryu',
         name: '白馬五龍',
         nameEn: 'Hakuba Goryu',
@@ -163,7 +163,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'intermediate',
         tags: ['家庭友善', '景觀'],
     },
-    nozawa_onsen: {
+    {
         id: 'nozawa_onsen',
         name: '野澤溫泉',
         nameEn: 'Nozawa Onsen',
@@ -173,7 +173,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'intermediate',
         tags: ['溫泉', '村莊氛圍'],
     },
-    shiga_kogen: {
+    {
         id: 'shiga_kogen',
         name: '志賀高原',
         nameEn: 'Shiga Kogen',
@@ -183,7 +183,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'expert',
         tags: ['最大面積', '多樣雪道'],
     },
-    gala_yuzawa: {
+    {
         id: 'gala_yuzawa',
         name: 'GALA湯澤',
         nameEn: 'GALA Yuzawa',
@@ -193,7 +193,7 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'beginner',
         tags: ['新幹線直達', '交通便利'],
     },
-    myoko_kogen: {
+    {
         id: 'myoko_kogen',
         name: '妙高高原',
         nameEn: 'Myoko Kogen',
@@ -203,12 +203,25 @@ export const RESORTS: Record<string, Resort> = {
         difficulty: 'advanced',
         tags: ['深雪', '豐富降雪'],
     },
-};
+] as const;
 
+/**
+ * 獲取所有雪場（返回新數組，避免外部修改）
+ */
 export function getAllResorts(): Resort[] {
-    return Object.values(RESORTS);
+    return [...RESORTS];
 }
 
+/**
+ * 根據 ID 查找雪場
+ */
+export function getResortById(id: string): Resort | undefined {
+    return RESORTS.find(resort => resort.id === id);
+}
+
+/**
+ * 根據區域獲取雪場
+ */
 export function getResortsByRegion(regionId: RegionId): Resort[] {
-    return Object.values(RESORTS).filter(resort => resort.region === regionId);
+    return RESORTS.filter(resort => resort.region === regionId);
 }

@@ -3,6 +3,8 @@
  *
  * Linus Principle: "Bad programmers worry about the code. Good programmers worry about data structures"
  * 這個組件純粹是展示層，所有數據都從 props 傳入
+ *
+ * P1-4 重構：使用狀態機消除條件分支（"Good Taste"）
  */
 
 'use client';
@@ -19,32 +21,112 @@ interface ResortMarkersProps {
   visitedResortIds: string[];
   /** 當前懸停的雪場 ID */
   hoveredResort: string | null;
+  /** P3-7: 搜索高亮的雪場 ID 列表 */
+  highlightedResortIds?: string[];
   /** 雪場點擊回調 */
   onResortClick: (resort: Resort) => void;
   /** 懸停狀態變化回調 */
   onHoverChange: (resortId: string | null) => void;
 }
 
+/**
+ * 標記狀態（優先級從高到低）
+ * Linus: 用清晰的狀態機替代複雜的條件判斷
+ * P3-7: 新增 highlighted 狀態
+ */
+type MarkerState = 'focused' | 'hovered' | 'highlighted' | 'visited' | 'default';
+
+/**
+ * 計算標記當前狀態（零條件分支）
+ * P3-7: 新增搜索高亮邏輯
+ */
+function getMarkerState(
+  isFocused: boolean,
+  isHovered: boolean,
+  isHighlighted: boolean,
+  isVisited: boolean
+): MarkerState {
+  if (isFocused) return 'focused';
+  if (isHovered) return 'hovered';
+  if (isHighlighted) return 'highlighted';
+  if (isVisited) return 'visited';
+  return 'default';
+}
+
+/**
+ * 狀態配置（數據驅動，消除特殊情況）
+ */
+const MARKER_CONFIG: Record<MarkerState, {
+  showPulse: boolean;
+  showLabel: boolean;
+  iconFillColor: (color: string) => string;
+  scale: number;
+  glowEffect?: boolean; // P3-7: 搜索高亮發光效果
+}> = {
+  focused: {
+    showPulse: false,
+    showLabel: true,
+    iconFillColor: (color) => color,
+    scale: 1.5,
+    glowEffect: false,
+  },
+  hovered: {
+    showPulse: false,
+    showLabel: true,
+    iconFillColor: (color) => color,
+    scale: 1.2,
+    glowEffect: false,
+  },
+  highlighted: {
+    showPulse: false,
+    showLabel: false,
+    iconFillColor: (color) => color,
+    scale: 1.15,
+    glowEffect: true, // 搜索高亮時發光
+  },
+  visited: {
+    showPulse: true,
+    showLabel: false,
+    iconFillColor: (color) => color,
+    scale: 1,
+    glowEffect: false,
+  },
+  default: {
+    showPulse: false,
+    showLabel: false,
+    iconFillColor: () => '#64748b',
+    scale: 1,
+    glowEffect: false,
+  },
+};
+
 export function ResortMarkers({
   resorts,
   focusedResort,
   visitedResortIds,
   hoveredResort,
+  highlightedResortIds = [],
   onResortClick,
   onHoverChange,
 }: ResortMarkersProps) {
   return (
     <>
       {resorts.map((resort) => {
+        // 計算狀態（單一真相來源）
         const isFocused = focusedResort?.id === resort.id;
         const isVisited = visitedResortIds.includes(resort.id);
         const isHovered = hoveredResort === resort.id;
+        const isHighlighted = highlightedResortIds.includes(resort.id); // P3-7: 搜索高亮
         const color = REGIONS[resort.region].color;
+
+        // 狀態機：零條件判斷
+        const state = getMarkerState(isFocused, isHovered, isHighlighted, isVisited);
+        const config = MARKER_CONFIG[state];
 
         return (
           <g key={resort.id}>
-            {/* 脈衝光環 - 僅已訪問且未聚焦時顯示 */}
-            {isVisited && !isFocused && (
+            {/* 脈衝光環 - 數據驅動 */}
+            {config.showPulse && (
               <motion.circle
                 cx={resort.position.x}
                 cy={resort.position.y}
@@ -64,6 +146,27 @@ export function ResortMarkers({
               />
             )}
 
+            {/* P3-7: 搜索高亮發光效果 */}
+            {config.glowEffect && (
+              <motion.circle
+                cx={resort.position.x}
+                cy={resort.position.y}
+                r="18"
+                fill={color}
+                opacity={0.3}
+                initial={{ scale: 0.8, opacity: 0.3 }}
+                animate={{
+                  scale: [0.8, 1.2, 0.8],
+                  opacity: [0.3, 0.6, 0.3],
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            )}
+
             {/* 雪場標記點 - 雪山圖標 */}
             <motion.g
               transform={`translate(${resort.position.x}, ${resort.position.y})`}
@@ -76,7 +179,7 @@ export function ResortMarkers({
               onMouseLeave={() => onHoverChange(null)}
               whileHover={{ scale: 1.2 }}
               whileTap={{ scale: 0.9 }}
-              animate={isFocused ? { scale: 1.5 } : {}}
+              animate={{ scale: config.scale }}
             >
               {/* 透明點擊熱區 (半徑 30px) */}
               <circle r="30" fill="transparent" />
@@ -86,10 +189,10 @@ export function ResortMarkers({
 
               {/* 雪山圖標 */}
               <g transform="translate(-12, -12) scale(0.8)">
-                {/* 山體 */}
+                {/* 山體 - 數據驅動顏色 */}
                 <path
                   d="M15 2 L28 25 L2 25 Z"
-                  fill={isVisited ? color : '#64748b'}
+                  fill={config.iconFillColor(color)}
                   stroke="white"
                   strokeWidth="2"
                   strokeLinejoin="round"
@@ -98,8 +201,8 @@ export function ResortMarkers({
                 <path d="M15 2 L19 9 L15 7 L11 9 Z" fill="white" />
               </g>
 
-              {/* 標籤 (Hover 或 Focus 時顯示) */}
-              {(isHovered || isFocused) && (
+              {/* 標籤 - 數據驅動顯示 */}
+              {config.showLabel && (
                 <g transform="translate(0, -25)">
                   <rect
                     x="-50"

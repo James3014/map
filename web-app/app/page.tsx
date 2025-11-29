@@ -1,6 +1,7 @@
 'use client';
 
 import { JapanMap } from '@/components/JapanMap';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { getAllResorts, REGIONS } from '@/data/resorts';
 import { motion } from 'framer-motion';
@@ -14,15 +15,31 @@ export default function Home() {
   );
   const [focusedResortId, setFocusedResortId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null); // P3-8: 区域筛选
 
   const resorts = getAllResorts();
 
-  // 篩選雪場
-  const filteredResorts = resorts.filter(resort =>
-    resort.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    resort.prefecture.includes(searchQuery) ||
-    resort.nameEn.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // 篩選雪場 + P3-7: 搜索高亮 + P3-8: 区域筛选
+  const filteredResorts = resorts.filter(resort => {
+    // 搜索筛选
+    const matchesSearch = searchQuery
+      ? resort.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        resort.prefecture.includes(searchQuery) ||
+        resort.nameEn.toLowerCase().includes(searchQuery.toLowerCase())
+      : true;
+
+    // 区域筛选
+    const matchesRegion = selectedRegion
+      ? resort.region === selectedRegion
+      : true;
+
+    return matchesSearch && matchesRegion;
+  });
+
+  // 搜索高亮的雪場 ID 列表
+  const highlightedResortIds = searchQuery
+    ? filteredResorts.map(r => r.id)
+    : [];
 
   const visitedCount = visitedResortIds.length;
   const totalCount = resorts.length;
@@ -131,6 +148,38 @@ export default function Home() {
               <h2 className="text-lg font-semibold">雪場列表</h2>
             </div>
 
+            {/* P3-8: 區域篩選按鈕 */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => setSelectedRegion(null)}
+                className={`px-3 py-1 rounded-full text-xs transition-all ${
+                  !selectedRegion
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                }`}
+              >
+                全部
+              </button>
+              {Object.values(REGIONS).map((region) => (
+                <button
+                  key={region.id}
+                  onClick={() => setSelectedRegion(region.id)}
+                  className={`px-3 py-1 rounded-full text-xs transition-all ${
+                    selectedRegion === region.id
+                      ? 'text-white'
+                      : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50'
+                  }`}
+                  style={
+                    selectedRegion === region.id
+                      ? { backgroundColor: region.color }
+                      : {}
+                  }
+                >
+                  {region.name}
+                </button>
+              ))}
+            </div>
+
             {/* 搜尋框 */}
             <input
               type="text"
@@ -191,7 +240,7 @@ export default function Home() {
           </div>
         </motion.aside>
 
-        {/* 地圖主體 */}
+        {/* 地圖主體 - P2-6: 添加錯誤邊界 */}
         <motion.section
           className="lg:col-span-3 glass-panel rounded-2xl p-6 md:p-8 min-h-[600px]"
           style={{ touchAction: 'none' }}
@@ -199,13 +248,16 @@ export default function Home() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.4 }}
         >
-          <JapanMap
-            visitedResortIds={visitedResortIds}
-            onResortClick={handleResortClick}
-            resorts={resorts}
-            externalFocusedResortId={focusedResortId}
-            onFocusChange={setFocusedResortId}
-          />
+          <ErrorBoundary>
+            <JapanMap
+              visitedResortIds={visitedResortIds}
+              onResortClick={handleResortClick}
+              resorts={resorts}
+              externalFocusedResortId={focusedResortId}
+              onFocusChange={setFocusedResortId}
+              highlightedResortIds={highlightedResortIds}
+            />
+          </ErrorBoundary>
         </motion.section>
       </div>
 

@@ -23,6 +23,7 @@ interface JapanMapProps {
   resorts: Resort[];
   externalFocusedResortId?: string | null;
   onFocusChange?: (resortId: string | null) => void;
+  highlightedResortIds?: string[]; // P3-7: 搜索高亮
 }
 
 export function JapanMap({
@@ -31,6 +32,7 @@ export function JapanMap({
   resorts,
   externalFocusedResortId,
   onFocusChange,
+  highlightedResortIds = [], // P3-7: 默认空数组
 }: JapanMapProps) {
   const [hoveredResort, setHoveredResort] = useState<string | null>(null);
   const [focusedResort, setFocusedResort] = useState<Resort | null>(null);
@@ -131,6 +133,7 @@ export function JapanMap({
             focusedResort={focusedResort}
             visitedResortIds={visitedResortIds}
             hoveredResort={hoveredResort}
+            highlightedResortIds={highlightedResortIds}
             onResortClick={focusAndScratch}
             onHoverChange={setHoveredResort}
           />
