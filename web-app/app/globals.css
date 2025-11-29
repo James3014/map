@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  /* Premium Dark Mode Colors */
+  --background: #050b14;
+  /* Deep Midnight Blue */
+  --foreground: #e2e8f0;
+  /* Soft Ice White */
+
+  /* Accents */
+  --accent-glow: #22d3ee;
+  /* Cyan Glow */
+  --accent-gold: #facc15;
+  /* Gold for achievements */
+
+  /* Surface Colors */
+  --surface-glass: rgba(15, 23, 42, 0.6);
+  --surface-border: rgba(148, 163, 184, 0.1);
+
+  /* Local font fallbacks (avoid remote Google Fonts fetch) */
+  --font-geist-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Custom Animations */
+  --animate-glow-pulse: glow-pulse 3s infinite;
+
+  @keyframes glow-pulse {
+
+    0%,
+    100% {
+      opacity: 1;
+      filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.5));
+    }
+
+    50% {
+      opacity: 0.8;
+      filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.8));
+    }
+  }
+}
+
+/* Root level lock - Disable ALL browser gestures by default */
+html,
+body {
+  touch-action: none !important;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Prevent global scroll */
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(56, 189, 248, 0.05) 0%, transparent 50%);
+}
+
+/* Custom Utilities */
+.glass-panel {
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--surface-border);
+}

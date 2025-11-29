@@ -1,0 +1,825 @@
+'use client';
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Resort, REGIONS } from '@/data/resorts';
+import confetti from 'canvas-confetti';
+import { AnimatePresence, motion } from 'framer-motion';
+import { JapanBaseMap } from './JapanBaseMap';
+
+interface JapanMapProps {
+    visitedResortIds: string[];
+    onResortClick: (resortId: string) => void;
+    resorts: Resort[];
+    externalFocusedResortId?: string | null;
+    onFocusChange?: (resortId: string | null) => void;
+}
+
+export function JapanMap({
+    visitedResortIds,
+    onResortClick,
+    resorts,
+    externalFocusedResortId,
+    onFocusChange
+}: JapanMapProps) {
+    const [hoveredResort, setHoveredResort] = useState<string | null>(null);
+    const [focusedResort, setFocusedResort] = useState<Resort | null>(null);
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const isDrawingRef = useRef(false);
+    const scratchedResortsRef = useRef<Set<string>>(new Set());
+
+
+    // Moved from bottom to fix scope issues
+    const containerRef = useRef<HTMLDivElement>(null);
+    const transformRef = useRef({ scale: 1, x: 0, y: 0 });
+    const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
+    const initialPinchDistance = useRef<number | null>(null);
+    const isDraggingRef = useRef(false);
+    const modeRef = useRef<'idle' | 'pan' | 'zoom' | 'scratch'>('idle');
+
+    // 地圖已透過 JapanBaseMap 組件載入,不再需要手動 fetch
+
+    // 載入底圖 & 重置刮刮樂
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !focusedResort) return;
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+
+        // Linus Principle: Keep it simple. 
+        // 統一使用 1000x1000 的邏輯坐標系，與 SVG 地圖保持一致。
+        // 這樣無論螢幕尺寸或縮放比例如何，坐標計算都只需在 0-1000 範圍內進行。
+        const LOGICAL_SIZE = 1000;
+        const dpr = window.devicePixelRatio || 1;
+
+        // 設置物理像素尺寸 (保證清晰度)
+        canvas.width = LOGICAL_SIZE * dpr;
+        canvas.height = LOGICAL_SIZE * dpr;
+
+        // 縮放 Context 以匹配邏輯坐標系
+        ctx.scale(dpr, dpr);
+
+        // 使用 requestAnimationFrame 確保 Canvas 已準備好
+        requestAnimationFrame(() => {
+            // 繪製高對比刮刮樂遮罩（銀灰色金屬質感）
+            const gradient = ctx.createRadialGradient(
+                LOGICAL_SIZE / 2, LOGICAL_SIZE / 2, 0,
+                LOGICAL_SIZE / 2, LOGICAL_SIZE / 2, LOGICAL_SIZE / 2
+            );
+            gradient.addColorStop(0, 'rgba(180, 180, 180, 0.95)');
+            gradient.addColorStop(0.5, 'rgba(140, 140, 140, 0.98)');
+            gradient.addColorStop(1, 'rgba(100, 100, 100, 0.95)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
+
+            // 添加金屬光澤
+            ctx.globalAlpha = 0.3;
+            const shimmer = ctx.createLinearGradient(0, 0, LOGICAL_SIZE, 0);
+            shimmer.addColorStop(0, 'rgba(255, 255, 255, 0)');
+            shimmer.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+            shimmer.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = shimmer;
+            ctx.fillRect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
+            ctx.globalAlpha = 1;
+
+            // 如果已經訪問過，直接全透明
+            if (visitedResortIds.includes(focusedResort.id)) {
+                ctx.clearRect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
+            }
+        });
+    }, [focusedResort, visitedResortIds]);
+
+
+
+    // 響應外部聚焦 & 點擊雪場標記 - 使用 CSS Transform 放大並居中
+    const focusAndScratch = useCallback((resort: Resort) => {
+        setFocusedResort(resort);
+        scratchProgressRef.current = 0;
+
+        const container = containerRef.current;
+        if (container && container.parentElement) {
+            // 自動縮放時，啟用 transition
+            container.style.transition = 'transform 0.8s cubic-bezier(0.25, 0.1, 0.25, 1)';
+
+            const wrapper = container.parentElement;
+            const rect = wrapper.getBoundingClientRect();
+
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+
+            const mapSize = rect.width;
+            const resortX = (resort.position.x / 1000) * mapSize;
+            const resortY = (resort.position.y / 1000) * mapSize;
+
+            const targetScale = 2.5;
+
+            const targetX = centerX - resortX * targetScale;
+            const targetY = centerY - resortY * targetScale;
+
+            transformRef.current = {
+                scale: targetScale,
+                x: targetX,
+                y: targetY
+            };
+
+            container.style.transformOrigin = '0 0';
+            container.style.transform = `translate(${targetX}px, ${targetY}px) scale(${targetScale})`;
+        }
+
+        setTimeout(() => {
+            if (focusedResort && !scratchedResortsRef.current.has(focusedResort.id)) {
+                // setFocusedResort(null); 
+            }
+        }, 10000);
+    }, [focusedResort]);
+
+    // ... (中間代碼省略) ...
+
+
+
+    // 生成粗糙筆刷紋理
+    const createBrushTexture = () => {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return canvas;
+
+        const center = size / 2;
+        const radius = size / 2;
+
+        // 繪製多個隨機噪點圓形，模擬粗糙邊緣
+        for (let i = 0; i < 50; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * radius;
+            const x = center + Math.cos(angle) * r;
+            const y = center + Math.sin(angle) * r;
+
+            ctx.beginPath();
+            ctx.arc(x, y, Math.random() * 4 + 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0, 0, 0, ${Math.random() * 0.5 + 0.5})`; // 隨機透明度
+            ctx.fill();
+        }
+
+        return canvas;
+    };
+
+    const brushRef = useRef<HTMLCanvasElement | null>(null);
+
+    useEffect(() => {
+        brushRef.current = createBrushTexture();
+    }, []);
+
+    const scratchProgressRef = useRef(0); // 記錄刮除進度（累積距離）
+
+    // 檢查刮開的雪場 - 使用歸一化坐標 (0-1000)
+    const checkScratchedResorts = useCallback((logicalX: number, logicalY: number) => {
+        if (!focusedResort || visitedResortIds.includes(focusedResort.id)) return;
+
+        // 雪場位置本身就是 0-1000 的坐標
+        const resortX = focusedResort.position.x;
+        const resortY = focusedResort.position.y;
+
+        const dist = Math.hypot(logicalX - resortX, logicalY - resortY);
+
+        // 判定範圍：邏輯坐標系中的 150 單位 (放寬判定)
+        if (dist < 150) {
+            const currentProgress = scratchProgressRef.current;
+            scratchProgressRef.current = currentProgress + 5;
+
+            if (scratchProgressRef.current > 400) {
+                if (!scratchedResortsRef.current.has(focusedResort.id)) {
+                    scratchedResortsRef.current.add(focusedResort.id);
+                    onResortClick(focusedResort.id);
+
+                    confetti({
+                        particleCount: 150,
+                        spread: 100,
+                        origin: { x: 0.5, y: 0.5 },
+                        colors: ['#22d3ee', '#fbbf24', '#f472b6', '#a78bfa'],
+                        startVelocity: 50,
+                        gravity: 1.2,
+                    });
+
+                    setTimeout(() => {
+                        setFocusedResort(null);
+                        onFocusChange?.(null);
+                        // 重置變換
+                        if (containerRef.current) {
+                            transformRef.current = { scale: 1, x: 0, y: 0 };
+                            containerRef.current.style.transform = 'translate(0px, 0px) scale(1)';
+                        }
+                    }, 2500);
+                }
+            }
+        }
+    }, [focusedResort, visitedResortIds, onResortClick, onFocusChange]);
+
+    // 刮除函數 - 輸入螢幕坐標，內部轉換為邏輯坐標
+    const scratch = useCallback((screenX: number, screenY: number) => {
+        const canvas = canvasRef.current;
+        const brush = brushRef.current;
+        if (!canvas || !brush) return;
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+
+        const rect = canvas.getBoundingClientRect();
+
+        // 轉換為邏輯坐標 (0-1000)
+        const logicalX = ((screenX - rect.left) / rect.width) * 1000;
+        const logicalY = ((screenY - rect.top) / rect.height) * 1000;
+
+        // 筆刷大小：在邏輯坐標系中固定為 80 單位 (加大筆刷)
+        const brushSize = 80;
+
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(
+            brush,
+            logicalX - brushSize / 2,
+            logicalY - brushSize / 2,
+            brushSize,
+            brushSize
+        );
+        ctx.globalCompositeOperation = 'source-over';
+
+        checkScratchedResorts(logicalX, logicalY);
+    }, [checkScratchedResorts]);
+
+    // 統一手勢控制器 (The Linus Way: Single Source of Truth for Input)
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const getDistance = (touch1: Touch, touch2: Touch) => {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        };
+
+        const updateTransform = () => {
+            const { x, y, scale } = transformRef.current;
+            container.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        };
+
+        const getLogicalPos = (screenX: number, screenY: number) => {
+            const rect = container.getBoundingClientRect();
+            return {
+                x: (screenX - rect.left) / rect.width * 1000,
+                y: (screenY - rect.top) / rect.height * 1000
+            };
+        };
+
+        const handleTouchStart = (e: TouchEvent) => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+                isDraggingRef.current = true;
+
+                // 智能判斷模式 - 簡化邏輯 (Linus Principle)
+                // 如果已聚焦，單指操作默認為刮刮樂，不再進行距離判斷，確保"一定能刮"
+                // 如果用戶想移動地圖，可以使用雙指 (Zoom/Pan)
+                if (focusedResort) {
+                    modeRef.current = 'scratch';
+                } else {
+                    modeRef.current = 'pan';
+                }
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                initialPinchDistance.current = getDistance(e.touches[0], e.touches[1]);
+                isDraggingRef.current = true;
+                modeRef.current = 'zoom';
+            }
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (!isDraggingRef.current) return;
+            e.preventDefault(); // 阻止瀏覽器默認行為
+
+            if (e.touches.length === 1 && lastTouchRef.current) {
+                const touch = e.touches[0];
+
+                if (modeRef.current === 'scratch') {
+                    scratch(touch.clientX, touch.clientY);
+                } else if (modeRef.current === 'pan') {
+                    const dx = touch.clientX - lastTouchRef.current.x;
+                    const dy = touch.clientY - lastTouchRef.current.y;
+
+                    // 應用新的位移
+                    let newX = transformRef.current.x + dx;
+                    let newY = transformRef.current.y + dy;
+
+                    // 邊界限制 (Linus Principle: Don't let it fly away)
+                    // 允許地圖邊緣拖到屏幕中心，但不允許完全拖出
+                    const rect = container.getBoundingClientRect();
+                    const limitX = rect.width * 0.8;
+                    const limitY = rect.height * 0.8;
+
+                    // 簡單的軟限制
+                    if (newX > limitX) newX = limitX;
+                    if (newX < -limitX) newX = -limitX;
+                    if (newY > limitY) newY = limitY;
+                    if (newY < -limitY) newY = -limitY;
+
+                    transformRef.current.x = newX;
+                    transformRef.current.y = newY;
+                    updateTransform();
+                }
+
+                lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+
+            } else if (e.touches.length === 2 && initialPinchDistance.current) {
+                // Zoom Mode - 以雙指中心為基準縮放
+                const currentDistance = getDistance(e.touches[0], e.touches[1]);
+                const scaleChange = currentDistance / initialPinchDistance.current;
+
+                const oldScale = transformRef.current.scale;
+                const newScale = Math.min(Math.max(oldScale * scaleChange, 0.5), 4);
+
+                // 計算雙指中心點 (相對於視口)
+                const centerScreenX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const centerScreenY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+                // 獲取容器父元素的 rect (作為參考系)
+                const parentRect = container.parentElement?.getBoundingClientRect();
+                if (parentRect) {
+                    const relativeCenterX = centerScreenX - parentRect.left;
+                    const relativeCenterY = centerScreenY - parentRect.top;
+
+                    const oldX = transformRef.current.x;
+                    const oldY = transformRef.current.y;
+
+                    // 計算中心點在邏輯空間(未縮放位移前)的位置
+                    // currentPos = oldX + logicalPos * oldScale
+                    // => logicalPos = (currentPos - oldX) / oldScale
+                    const logicalCenterX = (relativeCenterX - oldX) / oldScale;
+                    const logicalCenterY = (relativeCenterY - oldY) / oldScale;
+
+                    // 計算新的位移，保持中心點不動
+                    // newPos = relativeCenter - logicalPos * newScale
+                    const newX = relativeCenterX - logicalCenterX * newScale;
+                    const newY = relativeCenterY - logicalCenterY * newScale;
+
+                    transformRef.current = {
+                        scale: newScale,
+                        x: newX,
+                        y: newY
+                    };
+                } else {
+                    // Fallback if parent not found (should rarely happen)
+                    transformRef.current.scale = newScale;
+                }
+
+                initialPinchDistance.current = currentDistance;
+                updateTransform();
+            }
+        };
+
+        const handleTouchEnd = (e: TouchEvent) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance.current = null;
+            }
+            if (e.touches.length === 0) {
+                isDraggingRef.current = false;
+                lastTouchRef.current = null;
+                modeRef.current = 'idle';
+            }
+        };
+
+        // Mouse Event Handlers
+        const handleMouseDown = (e: MouseEvent) => {
+            lastTouchRef.current = { x: e.clientX, y: e.clientY };
+            isDraggingRef.current = true;
+
+            if (focusedResort) {
+                const { x, y } = getLogicalPos(e.clientX, e.clientY);
+                const dist = Math.hypot(x - focusedResort.position.x, y - focusedResort.position.y);
+                if (dist < 300) {
+                    modeRef.current = 'scratch';
+                } else {
+                    modeRef.current = 'pan';
+                }
+            } else {
+                modeRef.current = 'pan';
+            }
+        };
+
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDraggingRef.current) return;
+            e.preventDefault();
+
+            if (modeRef.current === 'scratch') {
+                scratch(e.clientX, e.clientY);
+            } else if (modeRef.current === 'pan' && lastTouchRef.current) {
+                const dx = e.clientX - lastTouchRef.current.x;
+                const dy = e.clientY - lastTouchRef.current.y;
+                transformRef.current.x += dx;
+                transformRef.current.y += dy;
+                updateTransform();
+            }
+            lastTouchRef.current = { x: e.clientX, y: e.clientY };
+        };
+
+        const handleMouseUp = () => {
+            isDraggingRef.current = false;
+            lastTouchRef.current = null;
+            modeRef.current = 'idle';
+        };
+
+        // 使用 passive: false 以便能 preventDefault
+        container.addEventListener('touchstart', handleTouchStart, { passive: false });
+        container.addEventListener('touchmove', handleTouchMove, { passive: false });
+        container.addEventListener('touchend', handleTouchEnd);
+
+        // Mouse events
+        container.addEventListener('mousedown', handleMouseDown);
+        window.addEventListener('mousemove', handleMouseMove); // Attach to window for smooth dragging outside container
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            container.removeEventListener('touchstart', handleTouchStart);
+            container.removeEventListener('touchmove', handleTouchMove);
+            container.removeEventListener('touchend', handleTouchEnd);
+
+            container.removeEventListener('mousedown', handleMouseDown);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [focusedResort, scratch]);
+
+
+
+
+
+    // 外部聚焦請求
+    useEffect(() => {
+        if (externalFocusedResortId) {
+            const resort = resorts.find(r => r.id === externalFocusedResortId);
+            if (resort) {
+                focusAndScratch(resort);
+            }
+        }
+    }, [externalFocusedResortId, resorts, focusAndScratch]);
+
+
+
+
+
+
+
+    // Helper to get region color from prefecture code
+    const getRegionColor = (code: number) => {
+        const region = Object.values(REGIONS).find(r => r.prefectureCode.includes(code));
+        return region ? region.color : '#EEEEEE';
+    };
+
+    // 重置地圖視角
+    const resetMap = useCallback(() => {
+        setFocusedResort(null);
+        onFocusChange?.(null);
+        if (containerRef.current) {
+            // 使用 transition 讓重置過程平滑
+            containerRef.current.style.transition = 'transform 0.5s cubic-bezier(0.25, 0.1, 0.25, 1)';
+            transformRef.current = { scale: 1, x: 0, y: 0 };
+            containerRef.current.style.transform = 'translate(0px, 0px) scale(1)';
+
+            // 重置後移除 transition 以免影響拖拽性能
+            setTimeout(() => {
+                if (containerRef.current) {
+                    containerRef.current.style.transition = '';
+                }
+            }, 500);
+        }
+    }, [onFocusChange]);
+
+
+
+    return (
+        <div className="relative w-full h-full bg-slate-900 overflow-hidden select-none flex items-center justify-center" style={{ touchAction: 'auto' }}>
+            {/* 可縮放容器 - 強制正方形以確保座標對齊 */}
+            <div
+                ref={containerRef}
+                className="relative aspect-square w-full max-w-full max-h-full will-change-transform"
+                style={{ touchAction: 'auto', transformOrigin: '0 0' }}
+            >
+                {/* 彩色底圖 - 使用 SVG 組件 */}
+                <div ref={mapContainerRef} className="absolute inset-0 w-full h-full transition-all duration-700 drop-shadow-2xl opacity-90">
+                    <JapanBaseMap getRegionColor={getRegionColor} />
+                </div>
+
+                {/* 隱藏獎勵層 - 刮開後顯示的精美通行證 (z-40) */}
+                {focusedResort && (
+                    <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none z-40"
+                        viewBox="0 0 1000 1000"
+                        preserveAspectRatio="xMidYMid meet"
+                    >
+                        <g transform={`translate(${focusedResort.position.x}, ${focusedResort.position.y})`}>
+                            {/* 通行證卡片背景 */}
+                            <rect
+                                x="-60"
+                                y="-40"
+                                width="120"
+                                height="80"
+                                rx="8"
+                                fill={REGIONS[focusedResort.region].color}
+                                stroke="white"
+                                strokeWidth="3"
+                                filter="drop-shadow(0 4px 6px rgba(0,0,0,0.3))"
+                            />
+                            {/* 裝飾性紋理 */}
+                            <path
+                                d="M-60 20 L60 20"
+                                stroke="rgba(255,255,255,0.3)"
+                                strokeWidth="40"
+                                strokeDasharray="4 4"
+                            />
+                            {/* 雪場名稱 */}
+                            <text
+                                x="0"
+                                y="-10"
+                                textAnchor="middle"
+                                fill="white"
+                                fontSize="14"
+                                fontWeight="bold"
+                                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
+                            >
+                                {focusedResort.name}
+                            </text>
+                            {/* 區域/縣市 */}
+                            <text
+                                x="0"
+                                y="10"
+                                textAnchor="middle"
+                                fill="rgba(255,255,255,0.9)"
+                                fontSize="8"
+                            >
+                                {focusedResort.prefecture} | JPN
+                            </text>
+                            {/* 雪山圖標 */}
+                            <text
+                                x="0"
+                                y="30"
+                                textAnchor="middle"
+                                fontSize="16"
+                            >
+                                🏔️
+                            </text>
+                            {/* 虛擬條碼 */}
+                            <rect x="-50" y="35" width="100" height="4" fill="rgba(255,255,255,0.5)" />
+                        </g>
+                    </svg>
+                )}
+
+                {/* Canvas 刮除層 - 絕對最上層交互，禁止所有瀏覽器默認手勢 */}
+                {focusedResort && (
+                    <canvas
+                        ref={canvasRef}
+                        className="absolute inset-0 w-full h-full cursor-crosshair transition-all duration-300 z-50"
+                        style={{
+                            touchAction: 'none', // 關鍵：完全禁止瀏覽器處理手勢，確保 100% 交給 JS 處理刮除
+                        }}
+                    />
+                )}
+
+                {/* SVG 地圖層 (z-30) - 包含地圖輪廓和雪場標記 */}
+                <svg
+                    className="absolute inset-0 w-full h-full z-30"
+                    viewBox="0 0 1000 1000"
+                    preserveAspectRatio="xMidYMid meet"
+                >
+                    {/* 地圖輪廓已移至底層 JapanBaseMap */}
+
+                    {/* 雪場標記 */}
+                    {resorts.map(resort => {
+                        const isFocused = focusedResort?.id === resort.id;
+                        const isVisited = visitedResortIds.includes(resort.id);
+                        const isHovered = hoveredResort === resort.id;
+                        const color = REGIONS[resort.region].color;
+
+                        return (
+                            <g key={resort.id}>
+                                {/* 脈衝光環 */}
+                                {isVisited && !isFocused && (
+                                    <motion.circle
+                                        cx={resort.position.x}
+                                        cy={resort.position.y}
+                                        fill="none"
+                                        stroke={color}
+                                        strokeWidth={2}
+                                        initial={{ r: 12, opacity: 0.8 }}
+                                        animate={{ r: [12, 25, 12], opacity: [0.8, 0, 0.8] }}
+                                        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                                    />
+                                )}
+
+                                {/* 雪場標記點 - 改為小雪山圖示 */}
+                                <motion.g
+                                    transform={`translate(${resort.position.x}, ${resort.position.y})`}
+                                    className={`cursor-pointer ${focusedResort ? 'pointer-events-none' : 'pointer-events-auto'}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        focusAndScratch(resort);
+                                    }}
+                                    onMouseEnter={() => setHoveredResort(resort.id)}
+                                    onMouseLeave={() => setHoveredResort(null)}
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    animate={isFocused ? { scale: 1.5 } : {}}
+                                >
+                                    {/* 透明點擊熱區 (半徑 30px) */}
+                                    <circle r="30" fill="transparent" />
+
+                                    {/* 陰影 */}
+                                    <ellipse cx="0" cy="12" rx="12" ry="4" fill="rgba(0,0,0,0.3)" />
+
+                                    {/* 雪山圖標 */}
+                                    <g transform="translate(-12, -12) scale(0.8)">
+                                        {/* 山體 */}
+                                        <path
+                                            d="M15 2 L28 25 L2 25 Z"
+                                            fill={isVisited ? color : '#64748b'} // 已訪問顯示區域色，未訪問顯示灰色
+                                            stroke="white"
+                                            strokeWidth="2"
+                                            strokeLinejoin="round"
+                                        />
+                                        {/* 山頂積雪 */}
+                                        <path
+                                            d="M15 2 L19 9 L15 7 L11 9 Z"
+                                            fill="white"
+                                        />
+                                    </g>
+
+                                    {/* 標籤 (Hover 或 Focus 時顯示) */}
+                                    {(isHovered || isFocused) && (
+                                        <g transform="translate(0, -25)">
+                                            <rect
+                                                x="-50"
+                                                y="-20"
+                                                width="100"
+                                                height="20"
+                                                rx="10"
+                                                fill="rgba(15, 23, 42, 0.9)"
+                                                stroke={color}
+                                                strokeWidth="2"
+                                            />
+                                            <text
+                                                x="0"
+                                                y="-6"
+                                                textAnchor="middle"
+                                                fill="white"
+                                                fontSize="10"
+                                                fontWeight="bold"
+                                            >
+                                                {resort.name}
+                                            </text>
+                                            {/* 下方小三角 */}
+                                            <path d="M-5 -1 L0 4 L5 -1 Z" fill={color} />
+                                        </g>
+                                    )}
+                                </motion.g>
+                                {!isVisited && (
+                                    <text
+                                        x={resort.position.x + 95}
+                                        y={resort.position.y + 18}
+                                        textAnchor="middle"
+                                        fill={color}
+                                        fontSize="11"
+                                        fontWeight="600"
+                                    >
+                                        刮開或點擊 ✨
+                                    </text>
+                                )}
+                            </g>
+                        );
+                    })}
+                </svg>
+            </div>
+
+            {/* 聚焦提示 - 固定在螢幕上，不隨地圖縮放 */}
+            <AnimatePresence>
+                {focusedResort && !visitedResortIds.includes(focusedResort.id) && (
+                    <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none z-[60]"
+                        viewBox="0 0 1000 1000"
+                        preserveAspectRatio="xMidYMid meet"
+                    >
+                        {/* 脈衝圈 - 更粗更明顯 */}
+                        <motion.circle
+                            cx={focusedResort.position.x}
+                            cy={focusedResort.position.y}
+                            fill="none"
+                            stroke="#22d3ee"
+                            strokeWidth={8}
+                            strokeDasharray="20 10"
+                            initial={{ r: 70, opacity: 1 }}
+                            animate={{
+                                r: [70, 120, 70],
+                                opacity: [1, 0.3, 1]
+                            }}
+                            transition={{
+                                duration: 1.5,
+                                repeat: Infinity,
+                            }}
+                        />
+
+                        {/* 閃爍中心區域 */}
+                        <motion.circle
+                            cx={focusedResort.position.x}
+                            cy={focusedResort.position.y}
+                            fill="rgba(251, 191, 36, 0.3)"
+                            initial={{ r: 50 }}
+                            animate={{
+                                r: [50, 90, 50],
+                                opacity: [0.5, 0, 0.5]
+                            }}
+                            transition={{
+                                duration: 1,
+                                repeat: Infinity,
+                            }}
+                        />
+
+                        {/* 大字提示框 - 雪場上方 */}
+                        <motion.g
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.2 }}
+                        >
+                            {/* 背景 */}
+                            <rect
+                                x={focusedResort.position.x - 120}
+                                y={focusedResort.position.y - 170}
+                                width={240}
+                                height={90}
+                                rx={20}
+                                fill="rgba(15, 23, 42, 0.98)"
+                                stroke="#fbbf24"
+                                strokeWidth={4}
+                                filter="drop-shadow(0 10px 40px rgba(0,0,0,0.7))"
+                            />
+
+                            {/* 雪場名 */}
+                            <text
+                                x={focusedResort.position.x}
+                                y={focusedResort.position.y - 135}
+                                textAnchor="middle"
+                                fill="#22d3ee"
+                                fontSize="28"
+                                fontWeight="700"
+                            >
+                                {focusedResort.name}
+                            </text>
+
+                            {/* 操作指示 - 閃爍 */}
+                            <motion.text
+                                x={focusedResort.position.x}
+                                y={focusedResort.position.y - 100}
+                                textAnchor="middle"
+                                fill="#fbbf24"
+                                fontSize="22"
+                                fontWeight="700"
+                                animate={{ opacity: [1, 0.3, 1] }}
+                                transition={{ duration: 1, repeat: Infinity }}
+                            >
+                                👇 滑動刮開
+                            </motion.text>
+                        </motion.g>
+
+                        {/* 向下箭頭動畫 */}
+                        <motion.polygon
+                            points={`${focusedResort.position.x},${focusedResort.position.y - 60} 
+                         ${focusedResort.position.x - 20},${focusedResort.position.y - 80}
+                         ${focusedResort.position.x - 8},${focusedResort.position.y - 80}
+                         ${focusedResort.position.x - 8},${focusedResort.position.y - 95}
+                         ${focusedResort.position.x + 8},${focusedResort.position.y - 95}
+                         ${focusedResort.position.x + 8},${focusedResort.position.y - 80}
+                         ${focusedResort.position.x + 20},${focusedResort.position.y - 80}`}
+                            fill="#fbbf24"
+                            stroke="#fff"
+                            strokeWidth={3}
+                            filter="drop-shadow(0 4px 8px rgba(0,0,0,0.5))"
+                            animate={{ y: [0, 15, 0] }}
+                            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                    </svg>
+                )}
+            </AnimatePresence>
+            {/* 重置視角按鈕 - 總是顯示，方便用戶迷路時自救 */}
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    resetMap();
+                }}
+                className="absolute bottom-6 right-6 z-[70] p-3 bg-slate-800/90 text-white rounded-full shadow-lg border border-slate-600 backdrop-blur-sm active:scale-90 transition-all hover:bg-slate-700"
+                aria-label="重置地圖"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74-2.74L3 12" />
+                    <path d="M3 3v9h9" />
+                </svg>
+            </button>
+        </div>
+    );
+}
