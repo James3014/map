@@ -8,7 +8,14 @@ interface JapanBaseMapProps {
 export const JapanBaseMap: React.FC<JapanBaseMapProps> = ({ getRegionColor }) => {
   return (
 
-    <svg className="geolonia-svg-map" width="100%" height="100%" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet">
+    <svg
+      className="geolonia-svg-map"
+      width="100%"
+      height="100%"
+      viewBox="0 0 1000 1000"
+      preserveAspectRatio="xMidYMid meet"
+      style={{ pointerEvents: 'none' }}
+    >
       <title>Japanese Prefectures</title>
       <desc>Created by Geolonia (https://geolonia.com/).</desc>
       <g className="svg-map" transform="matrix(1.028807, 0, 0, 1.028807, -47.544239, -28.806583)">
