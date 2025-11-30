@@ -36,6 +36,7 @@ export function JapanMap({
 }: JapanMapProps) {
   const [hoveredResort, setHoveredResort] = useState<string | null>(null);
   const [focusedResort, setFocusedResort] = useState<Resort | null>(null);
+  const [showAllLabels, setShowAllLabels] = useState(false); // 切換顯示所有標籤
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -109,6 +110,26 @@ export function JapanMap({
 
   return (
     <div className="relative w-full h-full bg-slate-900 overflow-hidden">
+      {/* 標籤切換按鈕 - 移動端友好 */}
+      <button
+        onClick={() => setShowAllLabels(!showAllLabels)}
+        className={`absolute top-4 right-4 z-50 px-4 py-2 rounded-lg font-medium transition-all ${
+          showAllLabels
+            ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/50'
+            : 'bg-gray-800/90 text-gray-300 border border-gray-700/50 hover:bg-gray-700/90'
+        }`}
+        style={{ touchAction: 'auto' }}
+      >
+        {showAllLabels ? '隱藏標籤' : '顯示標籤'}
+      </button>
+
+      {/* 縮放提示 - 僅在未顯示標籤且未縮放時顯示 */}
+      {!showAllLabels && transform.scale <= 1.8 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-gray-800/90 text-gray-300 text-sm rounded-lg border border-gray-700/50">
+          💡 提示：放大地圖或點擊「顯示標籤」查看雪場名稱
+        </div>
+      )}
+
       {/* 可變換容器 - 包含所有圖層 */}
       <div
         ref={containerRef}
@@ -138,7 +159,12 @@ export function JapanMap({
             const color = REGIONS[resort.region].color;
 
             // 決定是否顯示標籤
-            const showLabel = isHovered || isFocused || isHighlighted;
+            // 1. Hover（桌面端）
+            // 2. 聚焦或高亮
+            // 3. 手動切換顯示所有標籤
+            // 4. 縮放到一定程度自動顯示（scale > 1.8）
+            const isZoomedIn = transform.scale > 1.8;
+            const showLabel = isHovered || isFocused || isHighlighted || showAllLabels || isZoomedIn;
             const scale = isHovered ? 1.3 : isFocused ? 1.5 : 1;
 
             return (
