@@ -201,6 +201,23 @@ export function useGesture(
     window.addEventListener('mousemove', handleMouseMove); // 全局監聽，防止拖出容器
     window.addEventListener('mouseup', handleMouseUp);
 
+    // ========== Wheel 事件處理（滾輪縮放） ==========
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      // 計算縮放比例（向下滾動放大，向上滾動縮小）
+      const delta = -e.deltaY;
+      const scaleChange = delta > 0 ? 1.1 : 0.9;
+
+      // 以滑鼠位置為中心縮放
+      const center: Point = { x: e.clientX, y: e.clientY };
+      onZoom?.(scaleChange, center);
+    };
+
+    // ========== 綁定 Wheel 事件 ==========
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
     // ========== 清理 ==========
 
     return () => {
@@ -217,6 +234,8 @@ export function useGesture(
       container.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+
+      container.removeEventListener('wheel', handleWheel);
     };
   }, [containerRef, onScratch, onPan, onZoom, focusedResort, disabled, mode]);
 
