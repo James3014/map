@@ -129,15 +129,33 @@ export function JapanMap({
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: 'auto' }}
         >
-          <ResortMarkers
-            resorts={resorts}
-            focusedResort={focusedResort}
-            visitedResortIds={visitedResortIds}
-            hoveredResort={hoveredResort}
-            highlightedResortIds={highlightedResortIds}
-            onResortClick={focusAndScratch}
-            onHoverChange={setHoveredResort}
-          />
+          {/* Simple mountain icons */}
+          {resorts.map(resort => {
+            const isVisited = visitedResortIds.includes(resort.id);
+            const color = REGIONS[resort.region].color;
+
+            return (
+              <g
+                key={resort.id}
+                transform={`translate(${resort.position.x}, ${resort.position.y})`}
+                className="cursor-pointer"
+                onClick={() => focusAndScratch(resort)}
+              >
+                {/* 山形圖標 */}
+                <path
+                  d="M0,-10 L8,8 L-8,8 Z"
+                  fill={isVisited ? color : '#64748b'}
+                  stroke="white"
+                  strokeWidth="1.5"
+                />
+                {/* 山頂雪 */}
+                <path
+                  d="M0,-10 L3,-3 L0,-5 L-3,-3 Z"
+                  fill="white"
+                />
+              </g>
+            );
+          })}
         </svg>
 
         {/* Canvas 刮除層 (z-50) - 僅聚焦時顯示 */}
