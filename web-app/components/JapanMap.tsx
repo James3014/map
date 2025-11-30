@@ -127,6 +127,7 @@ export function JapanMap({
           className="absolute inset-0 w-full h-full z-30"
           viewBox="0 0 1000 1000"
           preserveAspectRatio="xMidYMid meet"
+          style={{ pointerEvents: 'auto' }}
         >
           <ResortMarkers
             resorts={resorts}
