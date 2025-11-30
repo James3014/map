@@ -129,17 +129,27 @@ export function JapanMap({
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: 'auto' }}
         >
-          {/* Simple mountain icons */}
+          {/* Mountain icons with hover labels */}
           {resorts.map(resort => {
             const isVisited = visitedResortIds.includes(resort.id);
+            const isFocused = focusedResort?.id === resort.id;
+            const isHovered = hoveredResort === resort.id;
+            const isHighlighted = highlightedResortIds.includes(resort.id);
             const color = REGIONS[resort.region].color;
+
+            // 決定是否顯示標籤
+            const showLabel = isHovered || isFocused || isHighlighted;
+            const scale = isHovered ? 1.3 : isFocused ? 1.5 : 1;
 
             return (
               <g
                 key={resort.id}
-                transform={`translate(${resort.position.x}, ${resort.position.y})`}
-                className="cursor-pointer"
+                transform={`translate(${resort.position.x}, ${resort.position.y}) scale(${scale})`}
+                className="cursor-pointer transition-transform duration-200"
                 onClick={() => focusAndScratch(resort)}
+                onMouseEnter={() => setHoveredResort(resort.id)}
+                onMouseLeave={() => setHoveredResort(null)}
+                style={{ transformOrigin: 'center' }}
               >
                 {/* 山形圖標 */}
                 <path
@@ -153,6 +163,49 @@ export function JapanMap({
                   d="M0,-10 L3,-3 L0,-5 L-3,-3 Z"
                   fill="white"
                 />
+
+                {/* Hover 時顯示標籤 */}
+                {showLabel && (
+                  <g transform="translate(0, -20)">
+                    {/* 背景框 */}
+                    <rect
+                      x="-40"
+                      y="-15"
+                      width="80"
+                      height="18"
+                      rx="9"
+                      fill="rgba(15, 23, 42, 0.95)"
+                      stroke={color}
+                      strokeWidth="1.5"
+                    />
+                    {/* 名稱文字 */}
+                    <text
+                      x="0"
+                      y="-3"
+                      textAnchor="middle"
+                      fill="white"
+                      fontSize="10"
+                      fontWeight="600"
+                    >
+                      {resort.name}
+                    </text>
+                    {/* 下方小三角 */}
+                    <path
+                      d="M-4,3 L0,8 L4,3 Z"
+                      fill={color}
+                    />
+                  </g>
+                )}
+
+                {/* 高亮發光效果 */}
+                {isHighlighted && (
+                  <circle
+                    r="15"
+                    fill={color}
+                    opacity="0.3"
+                    className="animate-pulse"
+                  />
+                )}
               </g>
             );
           })}
