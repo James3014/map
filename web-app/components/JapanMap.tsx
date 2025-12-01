@@ -192,7 +192,7 @@ export function JapanMap({
 
                 {/* Hover 時顯示標籤 */}
                 {showLabel && (
-                  <g transform="translate(0, -20)">
+                  <g transform="translate(0, -20)" style={{ pointerEvents: 'none' }}>
                     {/* 背景框 */}
                     <rect
                       x="-40"
@@ -203,6 +203,7 @@ export function JapanMap({
                       fill="rgba(15, 23, 42, 0.95)"
                       stroke={color}
                       strokeWidth="1.5"
+                      style={{ pointerEvents: 'none' }}
                     />
                     {/* 名稱文字 */}
                     <text
@@ -212,6 +213,7 @@ export function JapanMap({
                       fill="white"
                       fontSize="10"
                       fontWeight="600"
+                      style={{ pointerEvents: 'none' }}
                     >
                       {resort.name}
                     </text>
@@ -219,6 +221,7 @@ export function JapanMap({
                     <path
                       d="M-4,3 L0,8 L4,3 Z"
                       fill={color}
+                      style={{ pointerEvents: 'none' }}
                     />
                   </g>
                 )}
@@ -242,9 +245,30 @@ export function JapanMap({
           canvasRef={canvasRef}
           focusedResort={focusedResort}
         />
+
+        {/* 標籤層 (z-60) - 在 Canvas 之上，顯示聚焦雪場的名稱 */}
+        {focusedResort && (
+          <div
+            className="absolute z-60 pointer-events-none"
+            style={{
+              left: '50%',
+              top: '40%',
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div className="glass-panel px-6 py-3 rounded-xl border-2" style={{ borderColor: REGIONS[focusedResort.region].color }}>
+              <div className="text-2xl font-bold text-white text-center">
+                {focusedResort.name}
+              </div>
+              <div className="text-sm text-gray-400 text-center mt-1">
+                {focusedResort.prefecture} · {REGIONS[focusedResort.region].name}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 最上層：聚焦提示 (z-60) - 不隨地圖縮放 */}
+      {/* 最上層：聚焦提示 (z-70) - 不隨地圖縮放 */}
       <FocusHint focusedResort={focusedResort} visitedResortIds={visitedResortIds} />
     </div>
   );
