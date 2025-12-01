@@ -11,7 +11,7 @@ export const UI = {
 
   // 地圖相關
   NEAREST_NEIGHBORS_COUNT: 5,          // 顯示最近鄰居數量
-  LABEL_SHOW_SCALE_THRESHOLD: 1.8,    // 標籤自動顯示的縮放閾值
+  LABEL_SHOW_SCALE_THRESHOLD: 2.8,    // 標籤自動顯示的縮放閾值（提高以避免擁擠）
 
   // 側邊欄尺寸
   SIDEBAR_MAX_HEIGHT: 500,             // 雪場列表最大高度（px）

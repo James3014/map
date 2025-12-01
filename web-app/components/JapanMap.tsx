@@ -12,6 +12,8 @@ import { Resort, REGIONS } from '@/data/resorts';
 import { JapanBaseMap } from './JapanBaseMap';
 import { useMapTransform } from '@/hooks/useMapTransform';
 import { useGesture } from '@/hooks/useGesture';
+import { useLabelCollision } from '@/hooks/useLabelCollision';
+import { UI } from '@/constants/ui';
 
 interface JapanMapProps {
   visitedResortIds: string[];
@@ -47,7 +49,7 @@ export function JapanMap({
         return { id: r.id, dist: Math.hypot(dx, dy) };
       })
       .sort((a, b) => a.dist - b.dist)
-      .slice(0, 5); // 只留最近 5 個
+      .slice(0, UI.NEAREST_NEIGHBORS_COUNT);
 
     return distances.map((d) => d.id);
   }, [focusedResort, resorts]);
@@ -66,32 +68,28 @@ export function JapanMap({
   const { transform, pan, zoom, focusOnResort, reset } =
     useMapTransform(containerRef);
 
+  // Hook 2: 標籤碰撞檢測
+  const visibleLabelIds = useLabelCollision({
+    resorts,
+    transform,
+    hoveredResortId: hoveredResort,
+    focusedResortId: focusedResort?.id || null,
+    visitedResortIds,
+    highlightedResortIds,
+    nearestResortIds,
+    showAllLabels,
+  });
+
   /**
    * 判斷是否應該顯示雪場標籤
    *
-   * 顯示條件（任一滿足即可）：
-   * 1. Hover 懸停（桌面端）
-   * 2. 聚焦狀態（點擊雪場後）
-   * 3. 搜尋高亮
-   * 4. 手動切換「顯示標籤」
-   * 5. 縮放到一定程度（scale > 1.8）
-   * 6. 焦點附近的最近 5 個鄰居（減少密集區標籤）
+   * 使用碰撞檢測結果，避免標籤重疊
    */
   const getShouldShowLabel = useCallback((
-    resortId: string,
-    isHovered: boolean,
-    isFocused: boolean,
-    isHighlighted: boolean
+    resortId: string
   ): boolean => {
-    return (
-      isHovered ||
-      isFocused ||
-      isHighlighted ||
-      nearestResortIds.includes(resortId) ||
-      showAllLabels ||
-      transform.scale > 1.8
-    );
-  }, [showAllLabels, transform.scale, nearestResortIds]);
+    return visibleLabelIds.has(resortId);
+  }, [visibleLabelIds]);
 
   /**
    * 退出聚焦模式
@@ -102,7 +100,7 @@ export function JapanMap({
     reset();
   }, [onFocusChange, reset]);
 
-  // Hook 3: 手势控制
+  // Hook 3: 手勢控制
   const { mode } = useGesture(containerRef, {
     focusedResort,
     onPan: (delta) => pan(delta),
@@ -190,8 +188,8 @@ export function JapanMap({
             const isHighlighted = highlightedResortIds.includes(resort.id);
             const color = REGIONS[resort.region].color;
 
-            // 使用統一的標籤顯示邏輯
-            const showLabel = getShouldShowLabel(resort.id, isHovered, isFocused, isHighlighted);
+            // 使用碰撞檢測後的標籤顯示邏輯
+            const showLabel = getShouldShowLabel(resort.id);
             const scale = isHovered ? 1.3 : isFocused ? 1.5 : 1;
 
             return (
