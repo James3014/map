@@ -150,8 +150,11 @@ export function JapanMap({
           preserveAspectRatio="xMidYMid meet"
           style={{ pointerEvents: 'auto' }}
         >
-          {/* Mountain icons with hover labels */}
-          {resorts.map(resort => {
+          {/* 應用與 JapanBaseMap 相同的 transform */}
+          <g transform="matrix(1.028807, 0, 0, 1.028807, -47.544239, -28.806583)">
+            <g transform="matrix(1, 0, 0, 1, 6, 18)">
+              {/* Mountain icons with hover labels */}
+              {resorts.map(resort => {
             const isVisited = visitedResortIds.includes(resort.id);
             const isFocused = focusedResort?.id === resort.id;
             const isHovered = hoveredResort === resort.id;
@@ -172,7 +175,15 @@ export function JapanMap({
                 key={resort.id}
                 transform={`translate(${resort.position.x}, ${resort.position.y}) scale(${scale})`}
                 className="cursor-pointer transition-transform duration-200"
-                onClick={() => focusAndScratch(resort)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  focusAndScratch(resort);
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  focusAndScratch(resort);
+                }}
                 onMouseEnter={() => setHoveredResort(resort.id)}
                 onMouseLeave={() => setHoveredResort(null)}
                 style={{ transformOrigin: 'center' }}
@@ -192,7 +203,7 @@ export function JapanMap({
 
                 {/* Hover 時顯示標籤 */}
                 {showLabel && (
-                  <g transform="translate(0, -20)" style={{ pointerEvents: 'none' }}>
+                  <g transform="translate(0, -20)" pointerEvents="none">
                     {/* 背景框 */}
                     <rect
                       x="-40"
@@ -203,7 +214,6 @@ export function JapanMap({
                       fill="rgba(15, 23, 42, 0.95)"
                       stroke={color}
                       strokeWidth="1.5"
-                      style={{ pointerEvents: 'none' }}
                     />
                     {/* 名稱文字 */}
                     <text
@@ -213,7 +223,6 @@ export function JapanMap({
                       fill="white"
                       fontSize="10"
                       fontWeight="600"
-                      style={{ pointerEvents: 'none' }}
                     >
                       {resort.name}
                     </text>
@@ -221,7 +230,6 @@ export function JapanMap({
                     <path
                       d="M-4,3 L0,8 L4,3 Z"
                       fill={color}
-                      style={{ pointerEvents: 'none' }}
                     />
                   </g>
                 )}
@@ -238,6 +246,8 @@ export function JapanMap({
               </g>
             );
           })}
+            </g>
+          </g>
         </svg>
 
         {/* Canvas 刮除層 (z-50) - 僅聚焦時顯示 */}
