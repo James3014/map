@@ -39,7 +39,7 @@ describe('useMapTransform', () => {
       const resortLogicalX = 750;
       const resortLogicalY = 180;
       const mapSize = 1000; // 假设容器是 1000x1000
-      const targetScale = MAP.AUTO_ZOOM_SCALE; // 2.5
+      const targetScale = MAP.AUTO_ZOOM_SCALE;
 
       // 计算雪场在屏幕坐标系中的位置
       const resortScreenX = (resortLogicalX / 1000) * mapSize; // 750px
@@ -55,8 +55,8 @@ describe('useMapTransform', () => {
       // 验证计算逻辑
       expect(resortScreenX).toBe(750);
       expect(resortScreenY).toBe(180);
-      expect(targetX).toBe(500 - 750 * 2.5); // -1375
-      expect(targetY).toBe(500 - 180 * 2.5); // 50
+      expect(targetX).toBe(500 - 750 * targetScale);
+      expect(targetY).toBe(500 - 180 * targetScale);
     });
   });
 

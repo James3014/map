@@ -33,6 +33,8 @@ export function useScratch(
   const brushRef = useRef<HTMLCanvasElement | null>(null);
   const coordinateTransformRef = useRef(new CoordinateTransform());
   const hasStartedScratchingRef = useRef(false);
+  const scratchCountRef = useRef(0); // 刮除次數計數器
+  const hasCompletedRef = useRef(false); // 防止重複觸發完成
 
   /**
    * 生成粗糙筆刷紋理
@@ -63,6 +65,80 @@ export function useScratch(
 
     return canvas;
   }, []);
+
+  /**
+   * 檢測刮除進度（採樣檢測透明像素比例）
+   *
+   * 性能優化：
+   * - 只檢測中心圓形區域（CHECK_RADIUS）
+   * - 採樣檢測（每 SAMPLE_RATE 個像素檢測一個）
+   * - 同步檢測確保實時準確（移除 RAF 異步）
+   */
+  const checkProgress = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !focusedResort || hasCompletedRef.current) return;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    try {
+      const dpr = getDevicePixelRatio();
+      const centerX = (MAP.LOGICAL_SIZE / 2) * dpr;
+      const centerY = (MAP.LOGICAL_SIZE / 2) * dpr;
+      const radius = SCRATCH.CHECK_RADIUS * dpr;
+      const sampleRate = SCRATCH.SAMPLE_RATE;
+
+      // 獲取中心區域的像素數據（正方形邊界框）
+      const x = Math.max(0, centerX - radius);
+      const y = Math.max(0, centerY - radius);
+      const size = Math.min(radius * 2, canvas.width - x, canvas.height - y);
+
+      const imageData = ctx.getImageData(x, y, size, size);
+      const data = imageData.data;
+
+      let totalPixels = 0;
+      let transparentPixels = 0;
+
+      // 採樣檢測（每 sampleRate 個像素檢測一個）
+      for (let i = 0; i < data.length; i += 4 * sampleRate) {
+        const alpha = data[i + 3]; // Alpha 通道
+        totalPixels++;
+
+        // 判定為透明（alpha < 128 = 50% 透明度）
+        if (alpha < 128) {
+          transparentPixels++;
+        }
+      }
+
+      // 計算透明像素比例
+      const progress = totalPixels > 0 ? transparentPixels / totalPixels : 0;
+      progressRef.current = progress;
+
+      // 檢查是否達到完成閾值
+      if (progress >= SCRATCH.COMPLETE_THRESHOLD && !visitedResortIds.includes(focusedResort.id)) {
+        hasCompletedRef.current = true;
+
+        // 清除整個 Canvas（完成效果）
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 觸發完成回調
+        onComplete?.(focusedResort.id);
+
+        // Confetti 動畫
+        confetti({
+          particleCount: 150,
+          spread: 100,
+          origin: { x: 0.5, y: 0.5 },
+          colors: ['#22d3ee', '#fbbf24', '#f472b6', '#a78bfa'],
+          startVelocity: 50,
+          gravity: 1.2,
+        });
+      }
+    } catch (error) {
+      // getImageData 可能在跨域或其他情況下失敗，靜默處理
+      console.warn('Canvas progress check failed:', error);
+    }
+  }, [canvasRef, focusedResort, visitedResortIds, onComplete]);
 
   /**
    * 初始化 Canvas（繪製銀灰色金屬質感遮罩）
@@ -169,29 +245,17 @@ export function useScratch(
       );
       ctx.globalCompositeOperation = 'source-over';
 
+      // 在檢測範圍內才計數並檢測進度
       if (distance < SCRATCH.DETECTION_RADIUS) {
-        progressRef.current += 5;
+        scratchCountRef.current++;
 
-        // 檢查是否完成
-        if (progressRef.current >= SCRATCH.COMPLETE_THRESHOLD) {
-          if (!visitedResortIds.includes(focusedResort.id)) {
-            // 觸發完成回調
-            onComplete?.(focusedResort.id);
-
-            // Confetti 動畫
-            confetti({
-              particleCount: 150,
-              spread: 100,
-              origin: { x: 0.5, y: 0.5 },
-              colors: ['#22d3ee', '#fbbf24', '#f472b6', '#a78bfa'],
-              startVelocity: 50,
-              gravity: 1.2,
-            });
-          }
+        // 每 CHECK_FREQUENCY 次刮除檢測一次進度（性能優化）
+        if (scratchCountRef.current % SCRATCH.CHECK_FREQUENCY === 0) {
+          checkProgress();
         }
       }
     },
-    [canvasRef, focusedResort, visitedResortIds, onComplete, onExitFocus]
+    [canvasRef, focusedResort, visitedResortIds, onComplete, onExitFocus, checkProgress]
   );
 
   /**
@@ -199,7 +263,9 @@ export function useScratch(
    */
   const reset = useCallback(() => {
     progressRef.current = 0;
+    scratchCountRef.current = 0;
     hasStartedScratchingRef.current = false;
+    hasCompletedRef.current = false;
     initializeCanvas();
   }, [initializeCanvas]);
 
@@ -212,6 +278,9 @@ export function useScratch(
   useEffect(() => {
     if (focusedResort) {
       hasStartedScratchingRef.current = false;
+      hasCompletedRef.current = false;
+      scratchCountRef.current = 0;
+      progressRef.current = 0;
       initializeCanvas();
     }
   }, [focusedResort, initializeCanvas]);

@@ -7,19 +7,15 @@
 
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Resort, REGIONS } from '@/data/resorts';
 import { JapanBaseMap } from './JapanBaseMap';
-import { ResortMarkers } from './ResortMarkers';
-import { ScratchCanvas } from './ScratchCanvas';
-import { FocusHint } from './FocusHint';
 import { useMapTransform } from '@/hooks/useMapTransform';
 import { useGesture } from '@/hooks/useGesture';
-import { useScratch } from '@/hooks/useScratch';
 
 interface JapanMapProps {
   visitedResortIds: string[];
-  onResortClick: (resortId: string) => void;
+  onOpenScratch: (resortId: string) => void;
   resorts: Resort[];
   externalFocusedResortId?: string | null;
   onFocusChange?: (resortId: string | null) => void;
@@ -28,7 +24,7 @@ interface JapanMapProps {
 
 export function JapanMap({
   visitedResortIds,
-  onResortClick,
+  onOpenScratch,
   resorts,
   externalFocusedResortId,
   onFocusChange,
@@ -38,10 +34,29 @@ export function JapanMap({
   const [focusedResort, setFocusedResort] = useState<Resort | null>(null);
   const [showAllLabels, setShowAllLabels] = useState(false); // 切換顯示所有標籤
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 預計只顯示焦點/高亮，以及距離焦點最近的少量鄰居
+  const nearestResortIds = useMemo(() => {
+    if (!focusedResort) return [];
 
-  // 根據都道府縣代碼獲取區域顏色
+    // 計算其他雪場與焦點的距離（邏輯座標）
+    const distances = resorts
+      .filter((r) => r.id !== focusedResort.id)
+      .map((r) => {
+        const dx = r.position.x - focusedResort.position.x;
+        const dy = r.position.y - focusedResort.position.y;
+        return { id: r.id, dist: Math.hypot(dx, dy) };
+      })
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 5); // 只留最近 5 個
+
+    return distances.map((d) => d.id);
+  }, [focusedResort, resorts]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 根據都道府縣代碼獲取區域顏色
+   */
   const getRegionColor = (code: number) => {
     const region = Object.values(REGIONS).find(r => r.prefectureCode.includes(code));
     return region ? region.color : '#EEEEEE';
@@ -52,6 +67,33 @@ export function JapanMap({
     useMapTransform(containerRef);
 
   /**
+   * 判斷是否應該顯示雪場標籤
+   *
+   * 顯示條件（任一滿足即可）：
+   * 1. Hover 懸停（桌面端）
+   * 2. 聚焦狀態（點擊雪場後）
+   * 3. 搜尋高亮
+   * 4. 手動切換「顯示標籤」
+   * 5. 縮放到一定程度（scale > 1.8）
+   * 6. 焦點附近的最近 5 個鄰居（減少密集區標籤）
+   */
+  const getShouldShowLabel = useCallback((
+    resortId: string,
+    isHovered: boolean,
+    isFocused: boolean,
+    isHighlighted: boolean
+  ): boolean => {
+    return (
+      isHovered ||
+      isFocused ||
+      isHighlighted ||
+      nearestResortIds.includes(resortId) ||
+      showAllLabels ||
+      transform.scale > 1.8
+    );
+  }, [showAllLabels, transform.scale, nearestResortIds]);
+
+  /**
    * 退出聚焦模式
    */
   const exitFocus = useCallback(() => {
@@ -60,25 +102,11 @@ export function JapanMap({
     reset();
   }, [onFocusChange, reset]);
 
-  // Hook 2: 刮除邏輯
-  const { scratch } = useScratch(canvasRef, {
-    focusedResort,
-    visitedResortIds,
-    onComplete: (resortId) => {
-      onResortClick(resortId);
-      setTimeout(() => {
-        exitFocus();
-      }, 2000);
-    },
-    onExitFocus: exitFocus,
-  });
-
   // Hook 3: 手势控制
   const { mode } = useGesture(containerRef, {
     focusedResort,
     onPan: (delta) => pan(delta),
     onZoom: (scaleChange, center) => zoom(scaleChange, center),
-    onScratch: (point) => scratch(point),
   });
 
   /**
@@ -89,8 +117,9 @@ export function JapanMap({
       setFocusedResort(resort);
       focusOnResort(resort);
       onFocusChange?.(resort.id);
+      onOpenScratch(resort.id);
     },
-    [focusOnResort, onFocusChange]
+    [focusOnResort, onFocusChange, onOpenScratch]
   );
 
   /**
@@ -161,13 +190,8 @@ export function JapanMap({
             const isHighlighted = highlightedResortIds.includes(resort.id);
             const color = REGIONS[resort.region].color;
 
-            // 決定是否顯示標籤
-            // 1. Hover（桌面端）
-            // 2. 聚焦或高亮
-            // 3. 手動切換顯示所有標籤
-            // 4. 縮放到一定程度自動顯示（scale > 1.8）
-            const isZoomedIn = transform.scale > 1.8;
-            const showLabel = isHovered || isFocused || isHighlighted || showAllLabels || isZoomedIn;
+            // 使用統一的標籤顯示邏輯
+            const showLabel = getShouldShowLabel(resort.id, isHovered, isFocused, isHighlighted);
             const scale = isHovered ? 1.3 : isFocused ? 1.5 : 1;
 
             return (
@@ -214,6 +238,7 @@ export function JapanMap({
                       fill="rgba(15, 23, 42, 0.95)"
                       stroke={color}
                       strokeWidth="1.5"
+                      pointerEvents="none"
                     />
                     {/* 名稱文字 */}
                     <text
@@ -223,6 +248,7 @@ export function JapanMap({
                       fill="white"
                       fontSize="10"
                       fontWeight="600"
+                      pointerEvents="none"
                     >
                       {resort.name}
                     </text>
@@ -230,6 +256,7 @@ export function JapanMap({
                     <path
                       d="M-4,3 L0,8 L4,3 Z"
                       fill={color}
+                      pointerEvents="none"
                     />
                   </g>
                 )}
@@ -250,36 +277,30 @@ export function JapanMap({
           </g>
         </svg>
 
-        {/* Canvas 刮除層 (z-50) - 僅聚焦時顯示 */}
-        <ScratchCanvas
-          canvasRef={canvasRef}
-          focusedResort={focusedResort}
-        />
-
-        {/* 標籤層 (z-60) - 在 Canvas 之上，顯示聚焦雪場的名稱 */}
+        {/* 標籤層 (z-60) - 顯示聚焦雪場的名稱 */}
         {focusedResort && (
-          <div
-            className="absolute z-60 pointer-events-none"
-            style={{
-              left: '50%',
-              top: '40%',
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
-            <div className="glass-panel px-6 py-3 rounded-xl border-2" style={{ borderColor: REGIONS[focusedResort.region].color }}>
-              <div className="text-2xl font-bold text-white text-center">
-                {focusedResort.name}
-              </div>
-              <div className="text-sm text-gray-400 text-center mt-1">
-                {focusedResort.prefecture} · {REGIONS[focusedResort.region].name}
+          <>
+            <div
+              className="absolute z-60 pointer-events-none"
+              style={{
+                left: '50%',
+                top: '40%',
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              <div className="glass-panel px-6 py-3 rounded-xl border-2" style={{ borderColor: REGIONS[focusedResort.region].color }}>
+                <div className="text-2xl font-bold text-white text-center">
+                  {focusedResort.name}
+                </div>
+                <div className="text-sm text-gray-400 text-center mt-1">
+                  {focusedResort.prefecture} · {REGIONS[focusedResort.region].name}
+                </div>
               </div>
             </div>
-          </div>
+
+          </>
         )}
       </div>
-
-      {/* 最上層：聚焦提示 (z-70) - 不隨地圖縮放 */}
-      <FocusHint focusedResort={focusedResort} visitedResortIds={visitedResortIds} />
     </div>
   );
 }

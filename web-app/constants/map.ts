@@ -19,7 +19,7 @@ export const MAP = {
   MAX_SCALE: 4,
 
   /** 自动聚焦时的缩放倍数 */
-  AUTO_ZOOM_SCALE: 2.5,
+  AUTO_ZOOM_SCALE: 1.35,
 
   /** 平移边界限制因子 (允许拖动到屏幕的 80%) */
   PAN_LIMIT_FACTOR: 0.8,
@@ -35,8 +35,17 @@ export const SCRATCH = {
   /** 雪场检测半径 (逻辑坐标) */
   DETECTION_RADIUS: 150,
 
-  /** 完成刮除的进度阈值 */
-  COMPLETE_THRESHOLD: 400,
+  /** 完成刮除的进度阈值 (0.0 - 1.0，0.7 = 70%) */
+  COMPLETE_THRESHOLD: 0.7,
+
+  /** 进度检测的采样率 (检测每 N 个像素，提升性能) */
+  SAMPLE_RATE: 4,
+
+  /** 进度检测区域半径 (逻辑坐标，只检测中心圆形区域) */
+  CHECK_RADIUS: 200,
+
+  /** 进度检测频率 (每 N 次刮除检测一次，降低计算量) */
+  CHECK_FREQUENCY: 5,
 
   /** 笔刷纹理生成参数 */
   BRUSH_TEXTURE: {

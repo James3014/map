@@ -83,15 +83,24 @@ export function useGesture(
     // ========== Touch 事件處理 ==========
 
     const handleTouchStart = (e: TouchEvent) => {
+      const allowScratch = Boolean(onScratch && focusedResort);
+
       if (e.touches.length === 1) {
         // 單指觸控
         const touch = e.touches[0];
         lastPointRef.current = { x: touch.clientX, y: touch.clientY };
         isDraggingRef.current = true;
 
-        // 智能模式判斷（Linus Principle: 消除特殊情況）
-        // 如果已聚焦雪場，單指預設為刮除；否則為平移
-        const newMode = focusedResort ? GestureMode.SCRATCH : GestureMode.PAN;
+        /**
+         * 智能模式判斷（Linus Principle: 消除特殊情況）
+         * - 已聚焦雪場 → SCRATCH 模式（刮除）
+         * - 未聚焦 → PAN 模式（平移地圖）
+         *
+         * 注意：focusedResort 來自父組件 JapanMap 的狀態
+         * 當用戶點擊雪場時，JapanMap 會先設置 focusedResort，
+         * 然後 useEffect 會重新綁定事件監聽器（包含新的 focusedResort 值）
+         */
+        const newMode = allowScratch ? GestureMode.SCRATCH : GestureMode.PAN;
         setMode(newMode);
       } else if (e.touches.length === 2) {
         // 雙指觸控 = 縮放
@@ -155,11 +164,16 @@ export function useGesture(
     // ========== Mouse 事件處理 ==========
 
     const handleMouseDown = (e: MouseEvent) => {
+      const allowScratch = Boolean(onScratch && focusedResort);
       lastPointRef.current = { x: e.clientX, y: e.clientY };
       isDraggingRef.current = true;
 
-      // 桌面端：聚焦時判斷是否在雪場附近，決定刮除或平移
-      const newMode = focusedResort ? GestureMode.SCRATCH : GestureMode.PAN;
+      /**
+       * 桌面端手勢模式判斷（與移動端邏輯一致）
+       * - 已聚焦雪場 → SCRATCH 模式
+       * - 未聚焦 → PAN 模式
+       */
+      const newMode = allowScratch ? GestureMode.SCRATCH : GestureMode.PAN;
       setMode(newMode);
     };
 
